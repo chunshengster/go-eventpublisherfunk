@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/panjf2000/ants"
 )
 
 func CallBackFunc(t *testing.T, d EventData) error {
@@ -67,41 +69,6 @@ func TestNewAsyncPublisher(t *testing.T) {
 	}
 }
 
-func Test_publisher_WithAnts(t *testing.T) {
-	type fields struct {
-		Bus     *Bus
-		DataCh  DataChannel
-		ErrorCh ErrorChannel
-		async   bool
-		ctx     context.Context
-		cancel  context.CancelFunc
-		wg      sync.WaitGroup
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   Publisher
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &publisher{
-				Bus:     tt.fields.Bus,
-				DataCh:  tt.fields.DataCh,
-				ErrorCh: tt.fields.ErrorCh,
-				async:   tt.fields.async,
-				ctx:     tt.fields.ctx,
-				cancel:  tt.fields.cancel,
-				wg:      tt.fields.wg,
-			}
-			if got := p.WithAnts(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("publisher.WithAnts() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_publisher_CloseAsyncPublisher(t *testing.T) {
 	type fields struct {
 		Bus     *Bus
@@ -132,7 +99,7 @@ func Test_publisher_CloseAsyncPublisher(t *testing.T) {
 	}
 }
 
-var handleFunc_Demo = func(d EventData) (string, error) {
+var DemoHandleFunc_1 = func(d EventData) (string, error) {
 	fmt.Println("called from handleFunc_Demo", ":", d.ID, ":", d.Data, ":", d.Topic)
 	if d.ID != "" {
 		return d.ID, nil
@@ -159,7 +126,7 @@ func Test_publisher_RegisterTopicHandleFunc(t *testing.T) {
 			fields: NewPublisher(),
 			args: args{
 				topic: "test1",
-				f:     handleFunc_Demo,
+				f:     DemoHandleFunc_1,
 			},
 			wantErr: false,
 		},
@@ -262,7 +229,7 @@ func Test_publisher_PublishEvent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			p := tt.fields
 			t.Log(tt.args.d.Topic)
-			p.RegisterTopicHandleFunc(string(tt.args.d.Topic), handleFunc_Demo)
+			p.RegisterTopicHandleFunc(string(tt.args.d.Topic), DemoHandleFunc_1)
 			got, err := p.PublishEvent(tt.args.d)
 			t.Log("got", ":", got, "err", ":", err)
 			if (err != nil) != tt.wantErr {
@@ -291,7 +258,7 @@ func Test_publisher_PublishEventAsync(t *testing.T) {
 		// TODO: Add test cases.
 		{
 			name:   "PublishAsync test 1",
-			fields: NewAsyncPublisher(),
+			fields: NewPublisher(),
 			args: args{d: EventData{
 				ID:    "1",
 				Data:  "PublishAsync test 1",
@@ -302,11 +269,43 @@ func Test_publisher_PublishEventAsync(t *testing.T) {
 		},
 	}
 
+	// for _, tt := range tests {
+	// 	t.Run(tt.name, func(t *testing.T) {
+	// 		p := NewAsyncPublisher()
+	// 		defer p.CloseAsyncPublisher()
+	// 		p.RegisterTopicHandleFunc(tt.args.d.Topic, DemoHandleFunc_1)
+	// 		got, err := p.PublishEventAsync(tt.args.d)
+	// 		if (err != nil) != tt.wantErr {
+	// 			t.Errorf("publisher.PublishEventAsync() error = %v, wantErr %v", err, tt.wantErr)
+	// 			return
+	// 		}
+	// 		if got != tt.want {
+	// 			t.Errorf("publisher.PublishEventAsync() = %v, want %v", got, tt.want)
+	// 		}
+	// 	})
+	// }
+	DemoHandlerFunc_2 := func(d interface{}) {
+		fmt.Println(d.(EventData).ID)
+
+		re, err := DemoHandleFunc_1(d.(EventData))
+		fmt.Println(re, ":", err)
+	}
+	antsFuncPool, err := ants.NewPoolWithFunc(100, DemoHandlerFunc_2)
+	defer antsFuncPool.Release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	callbackFunc := func(d EventData) (string, error) {
+		fmt.Println(d.ID, ":", d.Data, ":", d.Topic)
+		antsFuncPool.Invoke(d)
+		return d.ID, nil
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := tt.fields
+			p := NewAsyncPublisher()
 			defer p.CloseAsyncPublisher()
-			p.RegisterTopicHandleFunc(tt.args.d.Topic, handleFunc_Demo)
+			p.RegisterTopicHandleFunc(tt.args.d.Topic, callbackFunc)
 			got, err := p.PublishEventAsync(tt.args.d)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("publisher.PublishEventAsync() error = %v, wantErr %v", err, tt.wantErr)
@@ -317,25 +316,5 @@ func Test_publisher_PublishEventAsync(t *testing.T) {
 			}
 		})
 	}
-}
 
-func TestCallBackFunc(t *testing.T) {
-	type args struct {
-		t *testing.T
-		d EventData
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := CallBackFunc(tt.args.t, tt.args.d); (err != nil) != tt.wantErr {
-				t.Errorf("CallBackFunc() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
 }

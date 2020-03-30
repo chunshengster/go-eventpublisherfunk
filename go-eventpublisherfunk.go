@@ -7,21 +7,26 @@ import (
 )
 
 const (
-	DefaultBusCapacity          = 128
-	DefaultDataChannelCapacity  = 1024
+	// DefaultBusCapacity          = 128
+	// DefaultDataChannelCapacity describe the cap of data channel
+	DefaultDataChannelCapacity = 65535
+	// DefaultErrorChannelCapacity describe the cap of error channel
 	DefaultErrorChannelCapacity = 1024
 )
 
-// type Topic string
+// EventData describe the standard event data struct
 type EventData struct {
-	ID   string
-	Data interface{}
+	ID    string
+	Data  interface{}
 	Topic string
 }
+
+//HandleFunc describe the func that used for handle EventData with special Topic
 type HandleFunc func(EventData) (eventId string, err error)
+
+// ErrorhandlFunc describe the error handler if error occurred,
 type ErrorHandleFunc func(error)
 
-// type HandleFuncs []HandleFunc
 type DataChannel chan EventData
 type ErrorChannel chan error
 
@@ -47,7 +52,6 @@ type publisher struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
-	// antsPool ants.PoolWithFunc
 }
 
 func NewPublisher() Publisher {
@@ -76,18 +80,16 @@ func NewAsyncPublisher() Publisher {
 	return p
 }
 
-func (p *publisher) WithAnts() Publisher {
-	return p
-}
-
 func (p *publisher) CloseAsyncPublisher() error {
 	select {
 	case <-p.ctx.Done():
 	default:
+		p.async = false
 		p.cancel()
-		p.wg.Wait()
+
 		close(p.DataCh)
 		close(p.ErrorCh)
+		p.wg.Wait()
 	}
 	return nil
 }
@@ -118,11 +120,11 @@ func (p *publisher) PublishEventAsync(d EventData) (string, error) {
 	case <-p.ctx.Done():
 		return "", fmt.Errorf("DefaultError")
 	default:
-		p.wg.Add(1)
-		defer p.wg.Done()
-		p.DataCh <- d
-		return d.ID, nil
 	}
+	p.wg.Add(1)
+	defer p.wg.Done()
+	p.DataCh <- d
+	return d.ID, nil
 }
 
 func (p *publisher) publish(d EventData) (string, error) {
@@ -136,27 +138,47 @@ func (p *publisher) publish(d EventData) (string, error) {
 }
 
 func (p *publisher) publisherasyncWorker() error {
-	go func() {
-		go func(wg *sync.WaitGroup) {
-			wg.Add(1)
-			defer wg.Done()
-			for d := range p.DataCh {
-				_, err := p.publish(d)
-				if err != nil {
-					p.ErrorCh <- err
-				}
+	go func(wg *sync.WaitGroup) {
+		wg.Add(1)
+		defer wg.Done()
+		for d := range p.DataCh {
+			_, err := p.publish(d)
+			if err != nil {
+				p.ErrorCh <- err
 			}
-		}(&p.wg)
 
-		go func(wg *sync.WaitGroup) {
-			wg.Add(1)
-			defer wg.Done()
-			for err := range p.ErrorCh {
-				if p.Bus.errhandles != nil {
-					p.Bus.errhandles(err)
-				}
+		}
+		// for {
+		// 	select {
+		// 	case <-p.ctx.Done():
+		// 		return
+		// 	case d := <-p.DataCh:
+		// 		_, err := p.publish(d)
+		// 		if err != nil {
+		// 			p.ErrorCh <- err
+		// 		}
+		// 	}
+		// }
+	}(&p.wg)
+
+	go func(wg *sync.WaitGroup) {
+		wg.Add(1)
+		defer wg.Done()
+		for err := range p.ErrorCh {
+			if p.Bus.errhandles != nil {
+				p.Bus.errhandles(err)
 			}
-		}(&p.wg)
-	}()
+		}
+		// for {
+		// 	select {
+		// 	case <-p.ctx.Done():
+		// 		return
+		// 	case err := <-p.ErrorCh:
+		// 		if p.Bus.errhandles != nil {
+		// 			p.Bus.errhandles(err)
+		// 		}
+		// 	}
+		// }
+	}(&p.wg)
 	return nil
 }

@@ -1,4 +1,4 @@
-module github.com/chunshengster/go-evenfpublisherfunk
+module github.com/chunshengster/go-eventpublisherfunk
 
 go 1.14
 

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"sync"
 
 	pfunk "github.com/chunshengster/go-eventpublisherfunk"
 	"github.com/panjf2000/ants"
@@ -23,7 +24,7 @@ func realCallback(i interface{}) {
 	}(i)
 }
 func antPoolInit() *ants.PoolWithFunc {
-	apf, err := ants.NewPoolWithFunc(100, realCallback)
+	apf, err := ants.NewPoolWithFunc(1000, realCallback)
 	if err != nil {
 		fmt.Println("antPoolInit err:", err)
 	}
@@ -49,11 +50,17 @@ func main() {
 		fmt.Println("RegisterTopicHandleFunc error", ":", err)
 		return
 	}
-	for i := 0; i < 100; i++ {
-		re, err := p.PublishEventAsync(pfunk.EventData{
-			ID:    strconv.Itoa(i),
-			Data:  "antsTestData" + strconv.Itoa(i),
-			Topic: "antsTest"})
-		fmt.Println("p.PublishEventAsync returned ", ":", re, ":", err)
+	wg := sync.WaitGroup{}
+	for i := 0; i < 10000; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			re, err := p.PublishEventAsync(pfunk.EventData{
+				ID:    strconv.Itoa(i),
+				Data:  "antsTestData" + strconv.Itoa(i),
+				Topic: "antsTest"})
+			fmt.Println("p.PublishEventAsync returned ", ":", re, ":", err)
+		}(i)
 	}
+	wg.Wait()
 }

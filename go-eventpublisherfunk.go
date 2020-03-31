@@ -57,6 +57,8 @@ type publisher struct {
 	bufferWG *sync.WaitGroup
 }
 
+// NewPublisher creates a new Publisher instance,where could be used through Publish.PublishEvent()
+// No need to Close()
 func NewPublisher() Publisher {
 	p := new(publisher)
 	p.Bus = &Bus{
@@ -66,6 +68,8 @@ func NewPublisher() Publisher {
 	return p
 }
 
+// NewAsyncPublish creates a new Publisher instance with publishasyncWorker, which has many goroutines to  process EventData.
+// Need close the instance via CloseAsyncPublisher(), see examples in examples directory
 func NewAsyncPublisher() Publisher {
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &publisher{
@@ -84,6 +88,7 @@ func NewAsyncPublisher() Publisher {
 	return p
 }
 
+// CloseAsyncPublisher() close the instance of Publisher
 func (p *publisher) CloseAsyncPublisher() error {
 	select {
 	case <-p.ctx.Done():
@@ -96,24 +101,30 @@ func (p *publisher) CloseAsyncPublisher() error {
 	return nil
 }
 
+// DumpBus dumps the current Bus struct
 func (p *publisher) DumpBus() *Bus {
 	return p.Bus
 }
 
+// RegisterTopicHandleFunc register consumer of topic, which may do many things sync or async.
+// users should privide (f HandleFunc) first
 func (p *publisher) RegisterTopicHandleFunc(topic string, f HandleFunc) error {
 	p.Bus.handles.Store(topic, f)
 	return nil
 }
 
+// RegisterErrorHandleFunc register consumer of errors which may renturn by HandleFunc
 func (p *publisher) RegisterErrorHandleFunc(f ErrorHandleFunc) error {
 	p.Bus.errhandles = f
 	return nil
 }
 
+// PublishEvent publish a DataEvent into Publish instance, the DataEvent data may be process by HandleFunc
 func (p *publisher) PublishEvent(d EventData) (string, error) {
 	return p.publish(d)
 }
 
+// PublishEventAsync publish a DataEvent into Publish instance, the Publisher instance must be initialized through NewAsyncPublisher()
 func (p *publisher) PublishEventAsync(d EventData) (string, error) {
 	if p.async.Load() != true {
 		return "", fmt.Errorf("DefaultError,need async")

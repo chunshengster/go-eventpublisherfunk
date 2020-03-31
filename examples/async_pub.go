@@ -27,6 +27,10 @@ func main() {
 		return
 	}
 	err = p.RegisterErrorHandleFunc(error_handle)
+	if err != nil {
+		fmt.Println("p.RegisterErrorHandleFunc returned error", ":", err)
+		return
+	}
 
 	wg := &sync.WaitGroup{}
 	for i := 0; i < 10000; i++ {

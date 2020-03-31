@@ -94,7 +94,7 @@ func main() {
 
 
 
-结合ants（https://github.com/panjf2000/ants）作为TopicHandle提高异步处理效率
+结合ants（https://github.com/panjf2000/ants) 作为TopicHandle提高异步处理效率
 
 ```go
 package main

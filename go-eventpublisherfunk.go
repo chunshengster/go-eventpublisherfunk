@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"go.uber.org/atomic"
 )
 
 const (
@@ -45,13 +47,14 @@ type Bus struct {
 }
 
 type publisher struct {
-	Bus     *Bus
-	DataCh  DataChannel
-	ErrorCh ErrorChannel
-	async   bool
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	Bus      *Bus
+	DataCh   DataChannel
+	ErrorCh  ErrorChannel
+	async    *atomic.Bool
+	ctx      context.Context
+	cancel   context.CancelFunc
+	workerWG *sync.WaitGroup
+	bufferWG *sync.WaitGroup
 }
 
 func NewPublisher() Publisher {
@@ -69,12 +72,13 @@ func NewAsyncPublisher() Publisher {
 		Bus: &Bus{
 			handles: new(sync.Map),
 		},
-		DataCh:  make(DataChannel, DefaultDataChannelCapacity),
-		ErrorCh: make(ErrorChannel, DefaultErrorChannelCapacity),
-		async:   true,
-		ctx:     ctx,
-		cancel:  cancel,
-		wg:      sync.WaitGroup{},
+		DataCh:   make(DataChannel, DefaultDataChannelCapacity),
+		ErrorCh:  make(ErrorChannel, DefaultErrorChannelCapacity),
+		async:    atomic.NewBool(true),
+		ctx:      ctx,
+		cancel:   cancel,
+		workerWG: &sync.WaitGroup{},
+		bufferWG: &sync.WaitGroup{},
 	}
 	p.publisherasyncWorker()
 	return p
@@ -84,12 +88,10 @@ func (p *publisher) CloseAsyncPublisher() error {
 	select {
 	case <-p.ctx.Done():
 	default:
-		p.async = false
+		p.async.Swap(false)
 		p.cancel()
 
-		close(p.DataCh)
-		close(p.ErrorCh)
-		p.wg.Wait()
+		p.workerWG.Wait()
 	}
 	return nil
 }
@@ -113,7 +115,7 @@ func (p *publisher) PublishEvent(d EventData) (string, error) {
 }
 
 func (p *publisher) PublishEventAsync(d EventData) (string, error) {
-	if p.async != true {
+	if p.async.Load() != true {
 		return "", fmt.Errorf("DefaultError,need async")
 	}
 	select { //
@@ -121,8 +123,8 @@ func (p *publisher) PublishEventAsync(d EventData) (string, error) {
 		return "", fmt.Errorf("DefaultError")
 	default:
 	}
-	p.wg.Add(1)
-	defer p.wg.Done()
+	p.bufferWG.Add(1)
+	defer p.bufferWG.Done()
 	p.DataCh <- d
 	return d.ID, nil
 }
@@ -148,18 +150,7 @@ func (p *publisher) publisherasyncWorker() error {
 			}
 
 		}
-		// for {
-		// 	select {
-		// 	case <-p.ctx.Done():
-		// 		return
-		// 	case d := <-p.DataCh:
-		// 		_, err := p.publish(d)
-		// 		if err != nil {
-		// 			p.ErrorCh <- err
-		// 		}
-		// 	}
-		// }
-	}(&p.wg)
+	}(p.workerWG)
 
 	go func(wg *sync.WaitGroup) {
 		wg.Add(1)
@@ -169,16 +160,17 @@ func (p *publisher) publisherasyncWorker() error {
 				p.Bus.errhandles(err)
 			}
 		}
-		// for {
-		// 	select {
-		// 	case <-p.ctx.Done():
-		// 		return
-		// 	case err := <-p.ErrorCh:
-		// 		if p.Bus.errhandles != nil {
-		// 			p.Bus.errhandles(err)
-		// 		}
-		// 	}
-		// }
-	}(&p.wg)
+	}(p.workerWG)
+
+	go func(wg *sync.WaitGroup) {
+		wg.Add(1)
+		defer wg.Done()
+		select {
+		case <-p.ctx.Done():
+			p.bufferWG.Wait()
+			close(p.DataCh)
+			close(p.ErrorCh)
+		}
+	}(p.workerWG)
 	return nil
 }

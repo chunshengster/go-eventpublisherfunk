@@ -1,4 +1,4 @@
-package main
+package examples
 
 import (
 	"fmt"
@@ -40,7 +40,7 @@ func AsyncJobHandler(d pfunk.EventData) (string, error) {
 	return d.ID, nil
 }
 
-func main() {
+func AsyncWithAntspool() {
 	AntsPoolWithFunc = antPoolInit()
 	p := pfunk.NewAsyncPublisher()
 	defer AntsPoolWithFunc.Release()

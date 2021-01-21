@@ -1,4 +1,4 @@
-package main
+package examples
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ func error_handle(e error) {
 	fmt.Println(e)
 }
 
-func main() {
+func AsyncPub() {
 	// mywg := sync.WaitGroup{}
 	p := pfunk.NewAsyncPublisher()
 	defer p.CloseAsyncPublisher()

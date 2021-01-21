@@ -1,4 +1,4 @@
-package main
+package examples
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ func CallBackFunc(d pfunk.EventData) (string, error) {
 	return d.ID, nil
 }
 
-func main() {
+func EchoData() {
 	p := pfunk.NewPublisher()
 	p.RegisterTopicHandleFunc("testtopic", CallBackFunc)
 	id, err := p.PublishEvent(pfunk.EventData{

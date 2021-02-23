@@ -126,7 +126,7 @@ func (p *publisher) PublishEvent(d EventData) (string, error) {
 
 // PublishEventAsync publish a DataEvent into Publish instance, the Publisher instance must be initialized through NewAsyncPublisher()
 func (p *publisher) PublishEventAsync(d EventData) (string, error) {
-	if p.async.Load() != true {
+	if !p.async.Load() {
 		return "", fmt.Errorf("DefaultError,need async")
 	}
 	select { //
@@ -151,8 +151,8 @@ func (p *publisher) publish(d EventData) (string, error) {
 }
 
 func (p *publisher) publisherasyncWorker() error {
+	p.workerWG.Add(1)
 	go func(wg *sync.WaitGroup) {
-		wg.Add(1)
 		defer wg.Done()
 		for d := range p.DataCh {
 			_, err := p.publish(d)
@@ -163,8 +163,8 @@ func (p *publisher) publisherasyncWorker() error {
 		}
 	}(p.workerWG)
 
+	p.workerWG.Add(1)
 	go func(wg *sync.WaitGroup) {
-		wg.Add(1)
 		defer wg.Done()
 		for err := range p.ErrorCh {
 			if p.Bus.errhandles != nil {
@@ -173,11 +173,11 @@ func (p *publisher) publisherasyncWorker() error {
 		}
 	}(p.workerWG)
 
+	p.workerWG.Add(1)
 	go func(wg *sync.WaitGroup) {
-		wg.Add(1)
 		defer wg.Done()
-		select {
-		case <-p.ctx.Done():
+		<-p.ctx.Done()
+		{
 			p.bufferWG.Wait()
 			close(p.DataCh)
 			close(p.ErrorCh)
